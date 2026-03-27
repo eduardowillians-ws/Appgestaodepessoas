@@ -4,6 +4,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Skill, UserSkill, Task, TaskStatus, SkillLevel, Role, Training, Goal } from './types';
 import { initialUsers, initialSkills, initialUserSkills, initialTasks, initialRoles, initialTrainings } from './mock-data';
 import { sanitizeData } from './utils';
+import { subscribeToUsers, FirebaseUser } from './firebase-users';
+import { subscribeSkills, FirebaseSkill } from './firebase-skills';
+import { subscribeToTasks, FirebaseTask, updateTask as updateTaskFirebase, deleteTask as deleteTaskFirebase } from './firebase-tasks';
+import { subscribeUserSkills, FirebaseUserSkill } from './firebase-user-skills';
 
 // ---------------------------------------------------------------------------
 // 🔒 Helpers de localStorage SEGUROS
@@ -44,6 +48,46 @@ function saveToStorage<T>(key: string, data: T): void {
 // Validadores — garantem que os dados do localStorage têm o formato esperado
 const isArrayOfObjects = (v: unknown): boolean =>
   Array.isArray(v) && v.every(item => typeof item === 'object' && item !== null && !Array.isArray(item));
+
+// ---------------------------------------------------------------------------
+// 🔄 Helpers de conversão Firebase → App (Timestamps → ISOString)
+// ---------------------------------------------------------------------------
+
+function convertFirebaseUser(fbUser: FirebaseUser): User {
+  return {
+    ...fbUser,
+    createdAt: fbUser.createdAt instanceof Date ? fbUser.createdAt.toISOString() : String(fbUser.createdAt),
+  };
+}
+
+function convertFirebaseTask(fbTask: FirebaseTask): Task {
+  return {
+    id: fbTask.id,
+    title: fbTask.title,
+    description: fbTask.description || '',
+    assignedUserId: fbTask.assignedUserId || undefined,
+    requiredSkills: fbTask.requiredSkills || [],
+    status: fbTask.status || 'pending',
+    priority: fbTask.priority || 'medium',
+    dueDate: fbTask.dueDate instanceof Date ? fbTask.dueDate.toISOString() : String(fbTask.dueDate),
+    createdAt: fbTask.createdAt instanceof Date ? fbTask.createdAt.toISOString() : String(fbTask.createdAt),
+    completedAt: fbTask.completedAt instanceof Date ? fbTask.completedAt.toISOString() : fbTask.completedAt ? String(fbTask.completedAt) : undefined,
+    rating: fbTask.rating ?? undefined,
+    archived: fbTask.archived || false,
+    archivedAt: fbTask.archivedAt instanceof Date ? fbTask.archivedAt.toISOString() : fbTask.archivedAt ? String(fbTask.archivedAt) : undefined,
+  };
+}
+
+function convertFirebaseSkill(fbSkill: FirebaseSkill): Skill {
+  return fbSkill as unknown as Skill;
+}
+
+function convertFirebaseUserSkill(fbUserSkill: FirebaseUserSkill): UserSkill {
+  return {
+    ...fbUserSkill,
+    lastUpdated: fbUserSkill.lastUpdated instanceof Date ? fbUserSkill.lastUpdated.toISOString() : String(fbUserSkill.lastUpdated),
+  };
+}
 
 // ---------------------------------------------------------------------------
 
@@ -150,6 +194,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { saveToStorage('nexus_roles', roles); }, [roles]);
   useEffect(() => { saveToStorage('nexus_trainings', trainings); }, [trainings]);
   useEffect(() => { saveToStorage('nexus_goals', goals); }, [goals]);
+
+  // ---------------------------------------------------------------------------
+  // 🔄 Sincronização Firebase → AppProvider (Fonte da verdade)
+  // Se Firestore vazio, usa initialUsers/initialTasks como fallback
+  // ---------------------------------------------------------------------------
+  
+  // Users
+  useEffect(() => {
+    const unsubscribe = subscribeToUsers((firebaseUsers) => {
+      if (firebaseUsers.length > 0) {
+        const converted = firebaseUsers.map(convertFirebaseUser);
+        setUsers(converted);
+        saveToStorage('nexus_users', converted);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Tasks
+  useEffect(() => {
+    const unsubscribe = subscribeToTasks((firebaseTasks) => {
+      if (firebaseTasks.length > 0) {
+        const converted = firebaseTasks.map(convertFirebaseTask);
+        setTasks(converted);
+        saveToStorage('nexus_tasks', converted);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Skills
+  useEffect(() => {
+    const unsubscribe = subscribeSkills((firebaseSkills) => {
+      if (firebaseSkills.length > 0) {
+        const converted = firebaseSkills.map(convertFirebaseSkill);
+        setSkills(converted);
+        saveToStorage('nexus_skills', converted);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // UserSkills
+  useEffect(() => {
+    const unsubscribe = subscribeUserSkills((firebaseUserSkills) => {
+      if (firebaseUserSkills.length > 0) {
+        const converted = firebaseUserSkills.map(convertFirebaseUserSkill);
+        setUserSkills(converted);
+        saveToStorage('nexus_userSkills', converted);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // ---------------------------------------------------------------------------
 
   // Auto-overdue logic
   useEffect(() => {
@@ -298,8 +397,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTasks(prev => prev.map(t => t.id === id ? sanitizeData({ ...t, ...data }) : t));
   };
 
-  const updateTaskStatus = (id: string, status: TaskStatus) => {
+  const updateTaskStatus = async (id: string, status: TaskStatus) => {
     try {
+      // Primeiro atualiza no Firebase
+      const updateData: any = { status };
+      if (status === 'completed') {
+        updateData.completedAt = new Date();
+      }
+      await updateTaskFirebase(id, updateData).catch(console.error);
+
+      // Depois atualiza o estado local
       setTasks(prev => {
         const task = prev.find(t => t.id === id);
         if (!task) return prev;
@@ -332,11 +439,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteTask = (id: string) => {
+  const deleteTask = async (id: string) => {
+    await deleteTaskFirebase(id).catch(console.error);
     setTasks(prev => prev.filter(t => t.id !== id));
   };
 
-  const archiveTask = (id: string) => {
+  const archiveTask = async (id: string) => {
+    await updateTaskFirebase(id, { archived: true, archivedAt: new Date() }).catch(console.error);
     setTasks(prev => prev.map(t => 
       t.id === id 
         ? sanitizeData({ ...t, archived: true, archivedAt: new Date().toISOString() }) 
@@ -344,7 +453,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ));
   };
 
-  const unarchiveTask = (id: string) => {
+  const unarchiveTask = async (id: string) => {
+    await updateTaskFirebase(id, { archived: false, archivedAt: null }).catch(console.error);
     setTasks(prev => prev.map(t => 
       t.id === id 
         ? sanitizeData({ ...t, archived: false, archivedAt: undefined }) 

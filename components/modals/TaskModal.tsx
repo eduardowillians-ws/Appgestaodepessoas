@@ -19,6 +19,23 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
   const [userSkills, setUserSkills] = useState<FirebaseUserSkill[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const router = useRouter();
+
+  // Função segura para converter dueDate (Date ou string) para YYYY-MM-DD
+  const formatDateForInput = (dateValue: any): string => {
+    if (!dateValue) return '';
+    let date: Date;
+    if (dateValue instanceof Date) {
+      date = dateValue;
+    } else if (typeof dateValue === 'string') {
+      date = new Date(dateValue);
+    } else if (dateValue.toDate) {
+      // Firebase Timestamp
+      date = dateValue.toDate();
+    } else {
+      return '';
+    }
+    return date.toISOString().split('T')[0];
+  };
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -115,8 +132,8 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
         setTitle(t.title);
         setDescription(t.description);
         setPriority(t.priority);
-        setDueDate(t.dueDate.split('T')[0]);
-        setRequiredSkills(t.requiredSkills);
+        setDueDate(formatDateForInput(t.dueDate));
+        setRequiredSkills(t.requiredSkills || []);
         setAssignedUserId(t.assignedUserId || '');
       }
     } else {

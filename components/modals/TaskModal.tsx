@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { X, Sparkles } from 'lucide-react';
 import { TaskPriority, TaskStatus, Skill, User, UserSkill } from '@/lib/types';
@@ -17,6 +18,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
   const [skills, setSkills] = useState<FirebaseSkill[]>([]);
   const [userSkills, setUserSkills] = useState<FirebaseUserSkill[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const router = useRouter();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -268,8 +270,19 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
                             </div>
                           )}
                           {missingSkills.length > 0 && trainingSuggestions.length === 0 && (
-                            <div className="bg-red-50 border border-red-200 text-red-800 p-2 rounded text-xs">
-                              Nenhum usuário está em treinamento nas skills faltantes. Considere criar um treinamento.
+                            <div className="space-y-2">
+                              <div className="bg-red-50 border border-red-200 text-red-800 p-2 rounded text-xs">
+                                Nenhum usuário está em treinamento nas skills faltantes. Considere criar um treinamento.
+                              </div>
+                              {missingSkills.map(ms => (
+                                <button
+                                  key={ms.skillName}
+                                  onClick={() => router.push(`/trainings/new?skill=${encodeURIComponent(ms.skillName)}`)}
+                                  className="w-full py-1.5 px-2 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-medium rounded flex items-center justify-center gap-1 transition-colors"
+                                >
+                                  + Criar treinamento para {ms.skillName}
+                                </button>
+                              ))}
                             </div>
                           )}
                           {!assignedUserId && suggestedUsers[0] && (

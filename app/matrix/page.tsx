@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useAppStore } from '@/lib/store';
+import { useState, useMemo, useEffect } from 'react';
 import { Topbar } from '@/components/Topbar';
 import { Sparkles, Filter, Plus, CheckCircle2, Award, TrendingUp, XCircle, X, BrainCircuit, Users, Star } from 'lucide-react';
 import { SkillLevel, UserSkill, User, Skill } from '@/lib/types';
+import { subscribeToUsers, FirebaseUser } from '@/lib/firebase-users';
+import { subscribeSkills, FirebaseSkill, createSkill } from '@/lib/firebase-skills';
+import { subscribeUserSkills, FirebaseUserSkill, updateUserSkill, createUserSkill } from '@/lib/firebase-user-skills';
 
 const LEVEL_WEIGHTS: Record<SkillLevel, number> = { not_trained: 0, in_training: 1, competent: 2, expert: 3 };
 
@@ -15,7 +17,7 @@ const LEVEL_CONFIG: Record<SkillLevel, { label: string; color: string; icon: any
   not_trained: { label: 'N/A', color: 'bg-slate-100 text-slate-400 border border-dashed border-slate-300', icon: XCircle },
 };
 
-const calculateTeamHealth = (userSkills: UserSkill[], users: User[], skills: Skill[]) => {
+const calculateTeamHealth = (userSkills: FirebaseUserSkill[], users: FirebaseUser[], skills: FirebaseSkill[]) => {
   if (users.length === 0 || skills.length === 0) return 0;
   const totalCells = users.length * skills.length;
   const maxPoints = totalCells * 3;
@@ -23,7 +25,7 @@ const calculateTeamHealth = (userSkills: UserSkill[], users: User[], skills: Ski
   return Math.round((currentPoints / maxPoints) * 100);
 };
 
-const getAtRiskSkills = (userSkills: UserSkill[], skills: Skill[]) => {
+const getAtRiskSkills = (userSkills: FirebaseUserSkill[], skills: FirebaseSkill[]) => {
   return skills.filter(skill => {
     const skillUsers = userSkills.filter(us => us.skillId === skill.id);
     const expertCount = skillUsers.filter(us => us.level === 'expert').length;
@@ -33,7 +35,9 @@ const getAtRiskSkills = (userSkills: UserSkill[], skills: Skill[]) => {
 };
 
 export default function MatrixPage() {
-  const { users, skills, userSkills, updateUserSkill, addSkill } = useAppStore();
+  const [users, setUsers] = useState<FirebaseUser[]>([]);
+  const [skills, setSkills] = useState<FirebaseSkill[]>([]);
+  const [userSkills, setUserSkills] = useState<FirebaseUserSkill[]>([]);
   
   const [filterCategory, setFilterCategory] = useState('Todas as Skills');
   const [searchSkill, setSearchSkill] = useState('');
@@ -43,6 +47,26 @@ export default function MatrixPage() {
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('');
   const [newSkillDescription, setNewSkillDescription] = useState('');
+
+  useEffect(() => {
+    const unsubUsers = subscribeToUsers(setUsers);
+    const unsubSkills = subscribeSkills(setSkills);
+    const unsubUserSkills = subscribeUserSkills(setUserSkills);
+    return () => {
+      unsubUsers();
+      unsubSkills();
+      unsubUserSkills();
+    };
+  }, []);
+
+  const levelMap = useMemo(() => {
+    const map: Record<string, Record<string, SkillLevel>> = {};
+    userSkills.forEach(us => {
+      if (!map[us.userId]) map[us.userId] = {};
+      map[us.userId][us.skillId] = us.level;
+    });
+    return map;
+  }, [userSkills]);
 
   const categories = ['Todas as Skills', ...Array.from(new Set(skills.map(s => s.category)))];
 
@@ -83,15 +107,22 @@ export default function MatrixPage() {
     }
   };
 
-  const handleCellClick = (userId: string, skillId: string) => {
-    const us = userSkills.find(us => us.userId === userId && us.skillId === skillId);
-    const currentLevel = us ? us.level : 'not_trained';
-    updateUserSkill(userId, skillId, cycleLevel(currentLevel));
+  const handleCellClick = async (userId: string, skillId: string) => {
+    const currentLevel = levelMap[userId]?.[skillId] || 'not_trained';
+    const newLevel = cycleLevel(currentLevel);
+    
+    const existing = userSkills.find(us => us.userId === userId && us.skillId === skillId);
+    if (existing) {
+      await updateUserSkill(existing.id, { level: newLevel, lastUpdated: new Date() });
+    } else if (newLevel !== 'not_trained') {
+      const { createUserSkill } = await import('@/lib/firebase-user-skills');
+      await createUserSkill({ userId, skillId, level: newLevel, lastUpdated: new Date() });
+    }
   };
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (newSkillName.trim() && newSkillCategory.trim()) {
-      addSkill({
+      await createSkill({
         name: newSkillName.trim(),
         category: newSkillCategory.trim(),
         description: newSkillDescription.trim(),

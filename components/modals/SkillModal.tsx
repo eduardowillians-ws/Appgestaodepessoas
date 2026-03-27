@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useAppStore } from '@/lib/store';
+import { useState, useEffect } from 'react';
 import { X, Plus, Pencil, Trash2 } from 'lucide-react';
+import { subscribeSkills, createSkill, updateSkill, deleteSkill } from '@/lib/firebase-skills';
+import { Skill } from '@/lib/types';
 
 interface SkillModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface SkillModalProps {
 }
 
 export function SkillModal({ isOpen, onClose }: SkillModalProps) {
-  const { skills, addSkill, updateSkill, deleteSkill } = useAppStore();
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('Geral');
   const [newSkillDescription, setNewSkillDescription] = useState('');
@@ -19,17 +20,36 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
   const [editCategory, setEditCategory] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsubscribe = subscribeSkills((firebaseSkills) => {
+      setSkills(firebaseSkills as Skill[]);
+    });
+    return () => unsubscribe();
+  }, [isOpen]);
+
   const categories = Array.from(new Set(skills.map(s => s.category).filter(Boolean)));
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (newSkillName.trim()) {
-      addSkill({
+      await createSkill({
         name: newSkillName.trim(),
         description: newSkillDescription.trim(),
         category: newSkillCategory.trim() || 'Geral',
       });
       setNewSkillName('');
       setNewSkillDescription('');
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingSkillId && editName.trim()) {
+      await updateSkill(editingSkillId, {
+        name: editName.trim(),
+        category: editCategory.trim() || 'Geral',
+        description: editDescription.trim(),
+      });
+      setEditingSkillId(null);
     }
   };
 
@@ -43,20 +63,9 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
     }
   };
 
-  const handleSaveEdit = () => {
-    if (editingSkillId && editName.trim()) {
-      updateSkill(editingSkillId, {
-        name: editName.trim(),
-        category: editCategory.trim() || 'Geral',
-        description: editDescription.trim(),
-      });
-      setEditingSkillId(null);
-    }
-  };
-
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta habilidade?')) {
-      deleteSkill(id);
+      await deleteSkill(id);
     }
   };
 

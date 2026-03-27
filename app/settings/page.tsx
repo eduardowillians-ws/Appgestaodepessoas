@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { Topbar } from '@/components/Topbar';
 import { Settings, Users, BrainCircuit, Plus, Pencil, Trash2, X, Check } from 'lucide-react';
+import { subscribeSkills, createSkill, updateSkill, deleteSkill } from '@/lib/firebase-skills';
+import { Skill } from '@/lib/types';
 
 export default function SettingsPage() {
-  const { roles, skills, addRole, updateRole, deleteRole, addSkill, updateSkill, deleteSkill } = useAppStore();
+  const { roles, addRole, updateRole, deleteRole } = useAppStore();
+  const [skills, setSkills] = useState<Skill[]>([]);
   
   const [activeTab, setActiveTab] = useState<'roles' | 'skills'>('roles');
   const [newRoleName, setNewRoleName] = useState('');
@@ -18,6 +21,13 @@ export default function SettingsPage() {
   const [newSkillDescription, setNewSkillDescription] = useState('');
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState({ name: '', category: '', description: '' });
+
+  useEffect(() => {
+    const unsubscribe = subscribeSkills((firebaseSkills) => {
+      setSkills(firebaseSkills as Skill[]);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleAddRole = () => {
     if (newRoleName.trim()) {
@@ -45,9 +55,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (newSkillName.trim() && newSkillCategory.trim()) {
-      addSkill({
+      await createSkill({
         name: newSkillName.trim(),
         category: newSkillCategory.trim(),
         description: newSkillDescription.trim(),
@@ -63,9 +73,9 @@ export default function SettingsPage() {
     setEditingSkill(skill);
   };
 
-  const handleSaveSkill = () => {
+  const handleSaveSkill = async () => {
     if (editingSkillId && editingSkill.name.trim() && editingSkill.category.trim()) {
-      updateSkill(editingSkillId, {
+      await updateSkill(editingSkillId, {
         name: editingSkill.name.trim(),
         category: editingSkill.category.trim(),
         description: editingSkill.description.trim(),
@@ -75,9 +85,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteSkill = (id: string) => {
+  const handleDeleteSkill = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta habilidade?')) {
-      deleteSkill(id);
+      await deleteSkill(id);
     }
   };
 

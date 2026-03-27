@@ -1,13 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/lib/store';
 import { X, Sparkles } from 'lucide-react';
-import { TaskPriority, TaskStatus } from '@/lib/types';
+import { TaskPriority, TaskStatus, Skill, User, UserSkill } from '@/lib/types';
 import { createTask } from '@/lib/firebase-tasks';
+import { subscribeSkills, FirebaseSkill } from '@/lib/firebase-skills';
+import { subscribeToUsers, FirebaseUser } from '@/lib/firebase-users';
+import { subscribeUserSkills, FirebaseUserSkill } from '@/lib/firebase-user-skills';
+import { subscribeToTasks } from '@/lib/firebase-tasks';
 
 export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClose: () => void; taskId: string | null }) {
-  const { tasks, users, skills, userSkills, updateTask } = useAppStore();
+  const { updateTask } = useAppStore();
+  
+  const [users, setUsers] = useState<FirebaseUser[]>([]);
+  const [skills, setSkills] = useState<FirebaseSkill[]>([]);
+  const [userSkills, setUserSkills] = useState<FirebaseUserSkill[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -15,6 +24,87 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
   const [dueDate, setDueDate] = useState('');
   const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
   const [assignedUserId, setAssignedUserId] = useState<string>('');
+
+  useEffect(() => {
+    const unsubUsers = subscribeToUsers(setUsers);
+    const unsubSkills = subscribeSkills(setSkills);
+    const unsubUserSkills = subscribeUserSkills(setUserSkills);
+    const unsubTasks = subscribeToTasks(setTasks);
+    return () => {
+      unsubUsers();
+      unsubSkills();
+      unsubUserSkills();
+      unsubTasks();
+    };
+  }, []);
+
+  const calculateScore = (userId: string, requiredSkillIds: string[]) => {
+    const LEVEL_SCORES: Record<string, number> = {
+      not_trained: 0,
+      in_training: 1,
+      competent: 2,
+      expert: 3
+    };
+    
+    const LEVEL_LABELS: Record<string, string> = {
+      not_trained: 'Não treinado',
+      in_training: 'Em treinamento',
+      competent: 'Competente',
+      expert: 'Especialista'
+    };
+
+    const skillBreakdown: { skillId: string; skillName: string; level: string; points: number }[] = [];
+    let skillScore = 0;
+    
+    requiredSkillIds.forEach(skillId => {
+      const userSkill = userSkills.find(us => us.userId === userId && us.skillId === skillId);
+      const skill = skills.find(s => s.id === skillId);
+      if (userSkill) {
+        const points = LEVEL_SCORES[userSkill.level] || 0;
+        skillScore += points;
+        skillBreakdown.push({
+          skillId,
+          skillName: skill?.name || skillId,
+          level: LEVEL_LABELS[userSkill.level] || 'Não treinado',
+          points
+        });
+      } else {
+        skillBreakdown.push({
+          skillId,
+          skillName: skill?.name || skillId,
+          level: 'Não treinado',
+          points: 0
+        });
+      }
+    });
+
+    const openTasksCount = tasks.filter(t => 
+      t.assignedUserId === userId && t.status !== 'completed'
+    ).length;
+    
+    const workloadPenalty = openTasksCount * 0.5;
+    const total = Math.max(0, skillScore - workloadPenalty);
+
+    return {
+      total,
+      skillScore,
+      workloadPenalty,
+      openTasksCount,
+      skillBreakdown
+    };
+  };
+
+  const suggestedUsers = useMemo(() => {
+    if (requiredSkills.length === 0) return [];
+    
+    return users
+      .map(user => ({
+        user,
+        score: calculateScore(user.id, requiredSkills)
+      }))
+      .filter(item => item.score.total > 0)
+      .sort((a, b) => b.score.total - a.score.total);
+  }, [users, userSkills, requiredSkills, tasks, skills]);
 
   useEffect(() => {
     if (taskId) {
@@ -36,20 +126,6 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
       setAssignedUserId('');
     }
   }, [taskId, tasks]);
-
-  // Smart Assignment Logic
-  const suggestedUsers = users.map(u => {
-    let score = 0;
-    requiredSkills.forEach(skId => {
-      const us = userSkills.find(x => x.userId === u.id && x.skillId === skId);
-      if (us) {
-        if (us.level === 'expert') score += 3;
-        else if (us.level === 'competent') score += 2;
-        else if (us.level === 'in_training') score += 1;
-      }
-    });
-    return { user: u, score };
-  }).filter(u => u.score > 0).sort((a, b) => b.score - a.score);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     console.log("SUBMIT TASK DISPARADO");
@@ -158,20 +234,88 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
                 </div>
                 {suggestedUsers.length > 0 ? (
                   <div className="space-y-2">
+                    {(() => {
+                      const bestUserScore = suggestedUsers[0]?.score;
+                      const missingSkills = bestUserScore?.skillBreakdown.filter(s => s.points === 0) || [];
+                      const hasAnyUserWithAllSkills = suggestedUsers.some(s => s.score.skillBreakdown.every(sb => sb.points > 0));
+                      
+                      const trainingSuggestions = missingSkills.map(ms => {
+                        const inTrainingUsers = userSkills
+                          .filter(us => us.skillId === ms.skillId && us.level === 'in_training')
+                          .map(us => users.find(u => u.id === us.userId))
+                          .filter(Boolean);
+                        return {
+                          skillName: ms.skillName,
+                          candidates: inTrainingUsers as FirebaseUser[]
+                        };
+                      }).filter(ts => ts.candidates.length > 0);
+                      
+                      return (
+                        <>
+                          {missingSkills.length > 0 && !hasAnyUserWithAllSkills && (
+                            <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-2 rounded text-xs">
+                              ⚠ Nenhum usuário possui todas as skills necessárias. Skills faltantes: {missingSkills.map(s => s.skillName).join(', ')}
+                            </div>
+                          )}
+                          {trainingSuggestions.length > 0 && (
+                            <div className="bg-blue-50 border border-blue-200 text-blue-800 p-2 rounded text-xs space-y-1">
+                              <p className="font-bold">💡 Sugestão de treinamento:</p>
+                              {trainingSuggestions.map(ts => (
+                                <p key={ts.skillName}>
+                                  {ts.candidates.map(u => u?.name).join(', ')} {ts.candidates.length === 1 ? 'está' : 'estão'} em treinamento em {ts.skillName}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {missingSkills.length > 0 && trainingSuggestions.length === 0 && (
+                            <div className="bg-red-50 border border-red-200 text-red-800 p-2 rounded text-xs">
+                              Nenhum usuário está em treinamento nas skills faltantes. Considere criar um treinamento.
+                            </div>
+                          )}
+                          {!assignedUserId && suggestedUsers[0] && (
+                            <button
+                              onClick={() => setAssignedUserId(suggestedUsers[0].user.id)}
+                              className="w-full py-2 px-3 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              Atribuir automaticamente: {suggestedUsers[0].user.name} (score {suggestedUsers[0].score.total})
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                     {suggestedUsers.map(({ user, score }) => (
                       <div 
                         key={user.id} 
                         onClick={() => setAssignedUserId(user.id)}
                         className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${assignedUserId === user.id ? 'bg-white border-2 border-primary shadow-sm' : 'bg-white/50 border border-transparent hover:bg-white'}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
-                          <div>
-                            <p className="text-sm font-bold text-on-surface">{user.name}</p>
-                            <p className="text-[10px] text-slate-500">{user.role}</p>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <img src={user.avatar} className="w-8 h-8 rounded-full" alt="" />
+                            <div>
+                              <p className="text-sm font-bold text-on-surface">{user.name}</p>
+                              <p className="text-[10px] text-slate-500">{user.role}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[10px] text-slate-500 space-y-0.5">
+                            {score.skillBreakdown.map((sb) => (
+                              <p key={sb.skillId} className="flex items-center gap-1">
+                                <span className="font-medium">{sb.skillName}:</span>
+                                <span className={sb.points > 0 ? 'text-green-600' : 'text-red-500'}>{sb.level}</span>
+                                <span className={sb.points > 0 ? 'text-green-600' : 'text-red-500'}>({sb.points > 0 ? '+' : ''}{sb.points})</span>
+                              </p>
+                            ))}
+                            {score.openTasksCount > 0 && (
+                              <p className="text-orange-600">
+                                Tarefas abertas: {score.openTasksCount} (-{score.workloadPenalty})
+                              </p>
+                            )}
+                            <p className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block mt-1">
+                              Score final: {score.total}
+                            </p>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full">Score: {score}</span>
                       </div>
                     ))}
                   </div>

@@ -49,7 +49,7 @@ export async function deleteSkill(id: string): Promise<void> {
   await deleteDoc(docRef);
 }
 
-export function subscribeToSkills(callback: (skills: FirebaseSkill[]) => void) {
+export function subscribeSkills(callback: (skills: FirebaseSkill[]) => void) {
   return onSnapshot(skillsCollection, (snapshot) => {
     const skills = snapshot.docs.map(doc => ({
       id: doc.id,

@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
 import { X, Camera } from 'lucide-react';
-import { UserStatus } from '@/lib/types';
+import { UserStatus, Skill, SkillLevel } from '@/lib/types';
 import { createUser, updateUser as updateUserFirebase } from '@/lib/firebase-users';
+import { subscribeSkills } from '@/lib/firebase-skills';
+import { subscribeUserSkills, createUserSkill, updateUserSkill } from '@/lib/firebase-user-skills';
 
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAcBL1lspFHQzM77O11-hM7xD06S5g10MR8VdDBNTucT7XRZdIyJ0vaXxx0EH1nwxMFyIANUJ0RIvPQkgG_PhIPVSfRpy9gef7W9iIDeA6l6LbVct8oSH0225HHHq1gkyHrVeO8w76eDQ_01OAP8IuL3xg1EljQXFc9U7lCh5THsisPCwRlx8djqAnukfERFnybe1Ppsbhd8cGguHv1Pdmox-4HIafBeQZSWArlrtixoV3s8i3un6fWLeMfJLqlMpykBZPYWuuzQ8yP';
@@ -31,6 +33,35 @@ export function UserModal({
   const [notes, setNotes] = useState('');
   const [avatar, setAvatar] = useState(DEFAULT_AVATAR);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [userSkillLevels, setUserSkillLevels] = useState<Record<string, SkillLevel>>({});
+
+  useEffect(() => {
+    const unsubSkills = subscribeSkills((firebaseSkills) => {
+      setSkills(firebaseSkills as Skill[]);
+    });
+    return () => unsubSkills();
+  }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      setUserSkillLevels({});
+      return;
+    }
+    const unsubUserSkills = subscribeUserSkills((items) => {
+      const userLevels: Record<string, SkillLevel> = {};
+      items.filter(us => us.userId === userId).forEach(us => {
+        userLevels[us.skillId] = us.level;
+      });
+      setUserSkillLevels(userLevels);
+    });
+    return () => unsubUserSkills();
+  }, [userId]);
+
+  const handleSkillLevelChange = (skillId: string, level: SkillLevel) => {
+    setUserSkillLevels(prev => ({ ...prev, [skillId]: level }));
+  };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -83,10 +114,34 @@ export function UserModal({
       };
 
       console.log("DADOS:", userData);
-      console.log("CHAMANDO createUser...");
-      console.log("🔍 ANTES DO AWAIT createUser");
-      const newUserId = await createUser(userData);
-      console.log("🔍 DEPOIS DO AWAIT createUser, result:", newUserId);
+      
+      let savedUserId = userId;
+      
+      if (userId) {
+        console.log("ATUALIZANDO USER");
+        await updateUserFirebase(userId, userData);
+      } else {
+        console.log("CRIANDO USER");
+        savedUserId = await createUser(userData);
+      }
+
+      if (savedUserId) {
+        const { getAllUserSkills } = await import('@/lib/firebase-user-skills');
+        const existingUserSkills = await getAllUserSkills();
+        
+        for (const skill of skills) {
+          const level = userSkillLevels[skill.id];
+          if (level) {
+            const existing = existingUserSkills.find(us => us.userId === savedUserId && us.skillId === skill.id);
+            if (existing) {
+              await updateUserSkill(existing.id, { level, lastUpdated: new Date() });
+            } else {
+              await createUserSkill({ userId: savedUserId, skillId: skill.id, level, lastUpdated: new Date() });
+            }
+          }
+        }
+      }
+
       console.log("SUCESSO");
       onClose();
       if (onSaved) onSaved();
@@ -215,6 +270,29 @@ export function UserModal({
               />
             </div>
           </div>
+
+          {userId && skills.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <label className="block text-sm font-bold text-slate-700 mb-2">Habilidades</label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {skills.map(skill => (
+                  <div key={skill.id} className="flex items-center justify-between p-2 bg-surface-low rounded-lg">
+                    <span className="text-sm font-medium">{skill.name}</span>
+                    <select
+                      value={userSkillLevels[skill.id] || 'not_trained'}
+                      onChange={(e) => handleSkillLevelChange(skill.id, e.target.value as SkillLevel)}
+                      className="text-sm p-1 bg-white border border-slate-200 rounded"
+                    >
+                      <option value="not_trained">Não treinado</option>
+                      <option value="in_training">Em treinamento</option>
+                      <option value="competent">Competente</option>
+                      <option value="expert">Especialista</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
             <button

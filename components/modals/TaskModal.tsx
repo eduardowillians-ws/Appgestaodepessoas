@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/lib/store';
 import { X, Sparkles } from 'lucide-react';
 import { TaskPriority, TaskStatus } from '@/lib/types';
+import { createTask } from '@/lib/firebase-tasks';
 
 export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClose: () => void; taskId: string | null }) {
-  const { tasks, users, skills, userSkills, addTask, updateTask } = useAppStore();
+  const { tasks, users, skills, userSkills, updateTask } = useAppStore();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -50,7 +51,8 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
     return { user: u, score };
   }).filter(u => u.score > 0).sort((a, b) => b.score - a.score);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    console.log("SUBMIT TASK DISPARADO");
     e.preventDefault();
     try {
       const taskData = {
@@ -62,14 +64,34 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
         assignedUserId: assignedUserId || undefined,
       };
 
+      console.log("DADOS TASK:", taskData);
+      console.log("CHAMANDO CREATE TASK");
+
       if (taskId) {
+        // edição - por agora mantém local
         updateTask(taskId, taskData);
       } else {
-        addTask(taskData);
+        // criação - Firebase
+        const firebaseTaskData = {
+          title: taskData.title,
+          description: taskData.description,
+          status: 'pending' as const,
+          assignedUserId: taskData.assignedUserId || null,
+          requiredSkills: taskData.requiredSkills,
+          priority: taskData.priority as 'low' | 'medium' | 'high',
+          dueDate: new Date(taskData.dueDate),
+          createdAt: new Date(),
+          completedAt: null,
+          rating: null,
+          archived: false,
+          archivedAt: null
+        };
+        await createTask(firebaseTaskData);
       }
+      console.log("TASK CRIADA COM SUCESSO");
       onClose();
     } catch (error) {
-      console.error("Error in TaskModal handleSubmit:", error);
+      console.error("ERRO AO CRIAR TASK", error);
     }
   };
 
@@ -85,7 +107,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={(e) => { console.log("FORM TASK DISPARADO"); handleSubmit(e); }} className="p-6 space-y-6">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Título</label>
@@ -162,7 +184,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
           
           <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-            <button type="submit" className="px-6 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors shadow-lg shadow-primary/20">
+            <button type="submit" onClick={() => console.log("BOTÃO TASK CLICADO")} className="px-6 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors shadow-lg shadow-primary/20">
               {taskId ? 'Salvar Alterações' : 'Criar Tarefa'}
             </button>
           </div>

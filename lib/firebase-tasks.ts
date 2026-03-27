@@ -60,13 +60,16 @@ export async function getTaskById(id: string): Promise<FirebaseTask | null> {
 }
 
 export async function createTask(taskData: Omit<FirebaseTask, 'id'>): Promise<string> {
-  const docRef = await addDoc(tasksCollection, {
+  console.log('🔥 SALVANDO TASK NO PROJETO:', taskData);
+  console.log("🔥 Enviando para Firestore");
+  const docRef = await addDoc(collection(db, "tasks"), {
     ...taskData,
     dueDate: Timestamp.fromDate(taskData.dueDate),
     createdAt: Timestamp.fromDate(taskData.createdAt),
     completedAt: taskData.completedAt ? Timestamp.fromDate(taskData.completedAt) : null,
     archivedAt: taskData.archivedAt ? Timestamp.fromDate(taskData.archivedAt) : null
   });
+  console.log("🔥 Documento criado com ID:", docRef.id);
   return docRef.id;
 }
 
@@ -100,4 +103,35 @@ export function subscribeToTasks(callback: (tasks: FirebaseTask[]) => void) {
     }) as FirebaseTask[];
     callback(tasks);
   });
+}
+
+export interface SimpleTaskData {
+  title: string;
+  description?: string;
+  assignedUserId?: string | null;
+}
+
+export async function createTaskSafe(taskData: SimpleTaskData): Promise<string> {
+  try {
+    const fullTaskData = {
+      title: taskData.title,
+      description: taskData.description || '',
+      status: 'pending' as const,
+      assignedUserId: taskData.assignedUserId || null,
+      requiredSkills: [],
+      priority: 'medium' as const,
+      dueDate: new Date(),
+      createdAt: new Date(),
+      completedAt: null,
+      rating: null,
+      archived: false,
+      archivedAt: null
+    };
+    
+    const id = await createTask(fullTaskData);
+    return id;
+  } catch (error) {
+    console.error('Erro ao criar task', error);
+    throw error;
+  }
 }

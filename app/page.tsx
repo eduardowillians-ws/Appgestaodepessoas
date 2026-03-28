@@ -508,13 +508,13 @@ function DashboardContent() {
                 </div>
                 <span className="font-bold">{completedPercent}%</span>
               </div>
-              {totalTasks - inProgressTasks - completedTasks > 0 && (
+              {totalTasks - inProgressTasksCount - completedTasks > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-slate-300"></span>
                     <span className="text-slate-600">Pendentes</span>
                   </div>
-                  <span className="font-bold">{Math.round(((totalTasks - inProgressTasks - completedTasks) / totalTasks) * 100)}%</span>
+                  <span className="font-bold">{Math.round(((totalTasks - inProgressTasksCount - completedTasks) / totalTasks) * 100)}%</span>
                 </div>
               )}
             </div>

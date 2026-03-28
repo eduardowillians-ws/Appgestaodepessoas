@@ -51,9 +51,14 @@ export async function updateFirebaseUserSkill(
     lastUpdated: serverTimestamp()
   };
   
-  // 3. If new level is "expert" AND previous was NOT "expert", award 5 points
+  // 3. If new level is "expert" AND previous was NOT "expert", award points
   if (level === 'expert' && previousLevel !== 'expert') {
-    console.log("🎉 NOVO EXPERT! Adicionando 5 pontos para userId:", userId);
+    // Busca a skill para ver quantos pontos ela vale, padrão 5
+    const skillRef = doc(db, 'skills', skillId);
+    const skillSnap = await getDoc(skillRef);
+    const skillPoints = skillSnap.exists() && typeof skillSnap.data().points === 'number' ? skillSnap.data().points : 5;
+
+    console.log(`🎉 NOVO EXPERT! Adicionando ${skillPoints} pontos para userId:`, userId);
     
     // Get user document reference
     const userDocRef = doc(db, 'users', userId);
@@ -62,10 +67,10 @@ export async function updateFirebaseUserSkill(
     if (userSnap.exists()) {
       // Use atomic increment to avoid race conditions
       await updateDoc(userDocRef, {
-        points: increment(5),
-        performanceScore: increment(5)
+        points: increment(skillPoints),
+        performanceScore: increment(skillPoints)
       });
-      console.log("✅ 5 pontos adicionados via atomic increment");
+      console.log(`✅ ${skillPoints} pontos adicionados via atomic increment`);
     } else {
       console.warn("⚠️ Usuário não encontrado no Firebase:", userId);
     }

@@ -4,9 +4,9 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Skill, UserSkill, Task, TaskStatus, SkillLevel, Role, Training, Goal } from './types';
 import { initialUsers, initialSkills, initialUserSkills, initialTasks, initialRoles, initialTrainings } from './mock-data';
 import { sanitizeData } from './utils';
-import { subscribeToUsers, FirebaseUser, updateUser as updateUserFirebase, getUserById, addPointsToUser, deleteUser as deleteUserFirebase } from './firebase-users';
-import { subscribeSkills, FirebaseSkill } from './firebase-skills';
-import { subscribeToTasks, FirebaseTask, updateTask as updateTaskFirebase, deleteTask as deleteTaskFirebase } from './firebase-tasks';
+import { subscribeToUsers, FirebaseUser, updateUser as updateUserFirebase, getUserById, addPointsToUser, deleteUser as deleteUserFirebase, createUser } from './firebase-users';
+import { subscribeSkills, FirebaseSkill, createSkill as createSkillFirebase, updateSkill as updateSkillFirebase, deleteSkill as deleteSkillFirebase } from './firebase-skills';
+import { subscribeToTasks, FirebaseTask, updateTask as updateTaskFirebase, deleteTask as deleteTaskFirebase, createTask as createTaskFirebase } from './firebase-tasks';
 import { subscribeUserSkills, FirebaseUserSkill, updateFirebaseUserSkill, deleteUserSkillByUserAndSkill } from './firebase-user-skills';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,7 @@ function convertFirebaseTask(fbTask: FirebaseTask): Task {
     rating: fbTask.rating ?? undefined,
     archived: fbTask.archived || false,
     archivedAt: fbTask.archivedAt instanceof Date ? fbTask.archivedAt.toISOString() : fbTask.archivedAt ? String(fbTask.archivedAt) : undefined,
+    points: fbTask.points ?? 1,
   };
 }
 
@@ -259,14 +260,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newTasks = tasks.map(t => {
         if (t.status !== 'completed' && t.status !== 'overdue' && t.dueDate < now) {
           updated = true;
-          // Gamification: -0.5 pontos por atraso
-          if (t.assignedUserId) {
-            setUsers(prev => prev.map(u =>
-              u.id === t.assignedUserId
-                ? { ...u, performanceScore: Math.max(0, u.performanceScore - 0.5) }
-                : u
-            ));
+          const isRealUser = t.assignedUserId && !t.assignedUserId.match(/^u\d+$/);
+          const isRealTask = t.id && !t.id.match(/^t\d+$/);
+
+          // Update Firebase if it's a real task
+          if (isRealTask) {
+            updateTaskFirebase(t.id, { status: 'overdue' }).catch(console.error);
+            if (isRealUser) {
+              addPointsToUser(t.assignedUserId!, -0.5).catch(console.error);
+            }
           }
+
+          // Fallback optimistic return
           return { ...t, status: 'overdue' as TaskStatus };
         }
         return t;
@@ -299,17 +304,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // --- Users ---
-  const addUser = (userData: Omit<User, 'id' | 'createdAt' | 'performanceScore' | 'points' | 'level' | 'xpToNextLevel'>) => {
-    const newUser: User = sanitizeData({
-      ...userData,
-      id: `u${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      performanceScore: 8.0,
-      points: 0,
-      level: 1,
-      xpToNextLevel: 100,
-    });
-    setUsers(prev => [...prev, newUser]);
+  const addUser = async (userData: Omit<User, 'id' | 'createdAt' | 'performanceScore' | 'points' | 'level' | 'xpToNextLevel'>) => {
+    const now = new Date();
+    try {
+      await createUser({
+        ...userData,
+        createdAt: now,
+        performanceScore: 8.0,
+        points: 0,
+        level: 1,
+        xpToNextLevel: 100,
+      });
+    } catch (error) {
+      console.error("Erro ao adicionar usuário no Firebase:", error);
+      // Fallback local caso dê erro (opcional)
+      const newUser: User = sanitizeData({
+        ...userData,
+        id: `u${Date.now()}`,
+        createdAt: now.toISOString(),
+        performanceScore: 8.0,
+        points: 0,
+        level: 1,
+        xpToNextLevel: 100,
+      });
+      setUsers(prev => [...prev, newUser]);
+    }
   };
 
   const addUserPoints = async (userId: string, pointsToAdd: number) => {
@@ -323,8 +342,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateUser = (id: string, data: Partial<User>) => {
+  const updateUser = async (id: string, data: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? sanitizeData({ ...u, ...data }) : u));
+    
+    // Convert to Firebase types
+    const firebaseData: any = { ...data };
+    if (data.createdAt) firebaseData.createdAt = new Date(data.createdAt);
+    
+    await updateUserFirebase(id, firebaseData).catch(console.error);
   };
 
   const deleteUser = async (id: string) => {
@@ -343,18 +368,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // --- Skills ---
-  const addSkill = (skillData: Omit<Skill, 'id'>) => {
-    const newSkill: Skill = sanitizeData({ ...skillData, id: `s${Date.now()}` });
-    setSkills(prev => [...prev, newSkill]);
+  const addSkill = async (skillData: Omit<Skill, 'id'>) => {
+    try {
+      await createSkillFirebase({
+        ...skillData,
+        points: skillData.points ?? 10
+      });
+    } catch (error) {
+      console.error("Erro ao adicionar skill:", error);
+      const newSkill: Skill = sanitizeData({ ...skillData, id: `s${Date.now()}` });
+      setSkills(prev => [...prev, newSkill]);
+    }
   };
 
-  const updateSkill = (id: string, data: Partial<Skill>) => {
+  const updateSkill = async (id: string, data: Partial<Skill>) => {
     setSkills(prev => prev.map(s => s.id === id ? sanitizeData({ ...s, ...data }) : s));
+    await updateSkillFirebase(id, data).catch(console.error);
   };
 
-  const deleteSkill = (id: string) => {
+  const deleteSkill = async (id: string) => {
     setSkills(prev => prev.filter(s => s.id !== id));
     setUserSkills(prev => prev.filter(us => us.skillId !== id));
+    await deleteSkillFirebase(id).catch(console.error);
   };
 
   // --- UserSkills ---
@@ -420,75 +455,109 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // --- Tasks ---
-  const addTask = (taskData: Omit<Task, 'id' | 'createdAt' | 'status'>) => {
-    const newTask: Task = sanitizeData({
-      ...taskData,
-      id: `t${Date.now()}`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    });
-    setTasks(prev => [...prev, newTask]);
+  const addTask = async (taskData: Omit<Task, 'id' | 'createdAt' | 'status'>) => {
+    const now = new Date();
+    try {
+      await createTaskFirebase({
+        title: taskData.title,
+        description: taskData.description,
+        assignedUserId: taskData.assignedUserId || null,
+        requiredSkills: taskData.requiredSkills || [],
+        status: 'pending',
+        priority: taskData.priority,
+        dueDate: new Date(taskData.dueDate),
+        createdAt: now,
+        completedAt: null,
+        rating: null,
+        archived: false,
+        archivedAt: null,
+        points: taskData.points ?? 1,
+      });
+    } catch (error) {
+      console.error("Erro ao criar newTask:", error);
+      const newTask: Task = sanitizeData({
+        ...taskData,
+        id: `t${Date.now()}`,
+        status: 'pending',
+        createdAt: now.toISOString(),
+      });
+      setTasks(prev => [...prev, newTask]);
+    }
   };
 
-  const updateTask = (id: string, data: Partial<Task>) => {
+  const updateTask = async (id: string, data: Partial<Task>) => {
     setTasks(prev => prev.map(t => t.id === id ? sanitizeData({ ...t, ...data }) : t));
+
+    const firebaseData: any = { ...data };
+    if (data.dueDate) firebaseData.dueDate = new Date(data.dueDate);
+    if (data.createdAt) firebaseData.createdAt = new Date(data.createdAt);
+    if (data.completedAt) firebaseData.completedAt = new Date(data.completedAt);
+    if (data.archivedAt) firebaseData.archivedAt = new Date(data.archivedAt);
+    
+    await updateTaskFirebase(id, firebaseData).catch(console.error);
   };
 
   const updateTaskStatus = async (id: string, status: TaskStatus) => {
     console.log("🚀 updateTaskStatus chamado:", { id, status });
     try {
-      // Primeiro atualiza no Firebase
+      // 1. Pega a task diretamente do state closure no momento exato do clique
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      
+      const previousStatus = task.status;
+      const isNowCompleting = status === 'completed';
+      const wasNotCompleted = previousStatus !== 'completed';
+
+      console.log("🔍 VERIFICAÇÃO DE XP:", { 
+        taskId: id, 
+        assignedUserId: task.assignedUserId,
+        previousStatus,
+        statusParam: status,
+        isNowCompleting,
+        wasNotCompleted,
+        taskPoints: task.points
+      });
+
+      // 2. Verificar se é usuário real (não mock)
+      const isRealUserId = task.assignedUserId && 
+        !task.assignedUserId.match(/^u\d+$/) && 
+        !task.assignedUserId.startsWith('mock') &&
+        task.assignedUserId.length > 5;
+      
+      // 3. Executar Lógica de Pontos DE FORA DO SET_STATE (evita React render dobrado ou race conditions)
+      if (isNowCompleting && task.assignedUserId && isRealUserId && wasNotCompleted) {
+        const pointsToAdd = task.points ?? 1;
+        console.log('🎯 Concluindo tarefa com pontos:', {
+          taskId: task.id,
+          previousStatus,
+          configuredPoints: task.points,
+          pointsToAdd,
+        });
+        addUserPoints(task.assignedUserId, pointsToAdd);
+      } else if (!wasNotCompleted) {
+        console.log('⏭️ Task já estava concluída, ignorando XP duplicado');
+      } else if (!isNowCompleting) {
+        console.log('⏭️ Task não está sendo completada, sem XP');
+      }
+
+      // 4. Primeiro atualiza no Firebase
       const updateData: any = { status };
       if (status === 'completed') {
         updateData.completedAt = new Date();
       }
       await updateTaskFirebase(id, updateData).catch(console.error);
 
-      // Depois atualiza o estado local - MAS primeiro verifica XP
-      setTasks(prev => {
-        const task = prev.find(t => t.id === id);
-        if (!task) return prev;
-        
-        // Verificar ANTES de qualquer mudança
-        const taskWasAlreadyCompleted = task.status === 'completed';
-        const isNowCompleting = status === 'completed';
-        const isNowOverdue = status === 'overdue';
-        
-        console.log("🔍 VERIFICAÇÃO DE XP:", { 
-          taskId: id, 
-          assignedUserId: task.assignedUserId,
-          taskStatus: task.status,
-          statusParam: status,
-          wasCompleted: taskWasAlreadyCompleted,
-          isNowCompleting: isNowCompleting,
-          isNowOverdue
-        });
-        
-        // Verificar se é usuário real (não mock)
-        const isRealUserId = task.assignedUserId && 
-          !task.assignedUserId.match(/^u\d+$/) && 
-          !task.assignedUserId.startsWith('mock') &&
-          task.assignedUserId.length > 5;
-        
-        // CONDIÇÃO CORRIGIDA: apenas verificar se está completando AGORA e se era diferente
-        if (isNowCompleting && task.assignedUserId && isRealUserId) {
-          console.log("🔥 CONDIÇÃO ACEITA! Chamando addUserPoints agora para:", task.assignedUserId);
-          // Chamar diretamente aqui dentro do setTasks
-          addUserPoints(task.assignedUserId, 1.0);
+      // 5. Atualiza o estado local de forma puramente funcional para não bloquear a UI temporariamente
+      setTasks(prev => prev.map(t => {
+        if (t.id === id) {
+          return sanitizeData({
+            ...t,
+            status,
+            completedAt: isNowCompleting ? new Date().toISOString() : t.completedAt
+          });
         }
-        
-        // Retornar estado atualizado
-        return prev.map(t => {
-          if (t.id === id) {
-            return sanitizeData({
-              ...t,
-              status,
-              completedAt: isNowCompleting ? new Date().toISOString() : t.completedAt
-            });
-          }
-          return t;
-        });
-      });
+        return t;
+      }));
     } catch (error) {
       console.error('Erro em updateTaskStatus:', error);
     }

@@ -29,6 +29,7 @@ export interface Skill {
   name: string;
   description: string;
   category: string;
+  points: number;
 }
 
 export interface UserSkill {
@@ -53,6 +54,7 @@ export interface Task {
   rating?: number;
   archived?: boolean;
   archivedAt?: string;
+  points?: number;
 }
 
 export interface Training {

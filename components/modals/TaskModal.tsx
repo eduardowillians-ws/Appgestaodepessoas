@@ -43,6 +43,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
   const [dueDate, setDueDate] = useState('');
   const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
   const [assignedUserId, setAssignedUserId] = useState<string>('');
+  const [points, setPoints] = useState(1);
 
   useEffect(() => {
     const unsubUsers = subscribeToUsers(setUsers);
@@ -154,7 +155,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
         title,
         description,
         priority,
-        dueDate: new Date(dueDate + 'T12:00:00').toISOString(),
+        dueDate: new Date(`${dueDate}T23:59:59`).toISOString(),
         requiredSkills,
         assignedUserId: assignedUserId || undefined,
       };
@@ -179,7 +180,8 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
           completedAt: null,
           rating: null,
           archived: false,
-          archivedAt: null
+          archivedAt: null,
+          points: points
         };
         await createTask(firebaseTaskData);
       }
@@ -214,7 +216,7 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
               <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none h-24" />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Prioridade</label>
                 <select value={priority} onChange={e => setPriority(e.target.value as TaskPriority)} className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none">
@@ -226,6 +228,16 @@ export function TaskModal({ isOpen, onClose, taskId }: { isOpen: boolean; onClos
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Data de Entrega</label>
                 <input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Pontos</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={points}
+                  onChange={(e) => setPoints(Number(e.target.value))}
+                  className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none"
+                />
               </div>
             </div>
 

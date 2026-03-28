@@ -15,6 +15,7 @@ export interface FirebaseSkill {
   name: string;
   category: string;
   description: string;
+  points: number;
 }
 
 export const skillsCollection = collection(db, 'skills');

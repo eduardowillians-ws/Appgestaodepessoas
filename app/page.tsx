@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { Topbar } from '@/components/Topbar';
 import { Sparkles, Users, CheckCircle2, AlertTriangle, TrendingUp, Star, Calendar, Loader2 } from 'lucide-react';
-import { generateProductivityData } from '@/lib/mock-data';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 interface DateRange {
@@ -21,23 +20,42 @@ function DashboardContent() {
   const [mounted, setMounted] = useState(false);
 
   const getInitialDateRange = (): DateRange => {
+    const saved = localStorage.getItem('dashboardDateRange');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          start: new Date(parsed.start),
+          end: new Date(parsed.end),
+        };
+      } catch {}
+    }
     const fromUrl = searchParams.get('from');
     const toUrl = searchParams.get('to');
-    
     if (fromUrl && toUrl) {
       return {
         start: new Date(fromUrl),
         end: new Date(toUrl),
       };
     }
-    
     return {
       start: new Date(new Date().setDate(new Date().getDate() - 30)),
       end: new Date(),
     };
   };
 
-  const [dateRange, setDateRange] = useState<DateRange>(getInitialDateRange);
+  const [dateRange, setDateRange] = useState<DateRange>(() => getInitialDateRange());
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('from');
+    const toUrl = searchParams.get('to');
+    if (fromUrl && toUrl) {
+      setDateRange({
+        start: new Date(fromUrl),
+        end: new Date(toUrl),
+      });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     setMounted(true);
@@ -55,23 +73,40 @@ function DashboardContent() {
     if (newRange.start <= newRange.end) {
       setDateRange(newRange);
       updateUrlParams(newRange);
+      localStorage.setItem('dashboardDateRange', JSON.stringify(newRange));
     }
   };
 
-  const filteredTasks = useMemo(() => {
-    return tasks.filter(t => {
-      const taskDate = new Date(t.createdAt);
-      return taskDate >= dateRange.start && taskDate <= dateRange.end;
+  const { completedTasksFiltered, overdueTasksFiltered, inProgressTasksCount, totalTasks } = useMemo(() => {
+    const start = new Date(dateRange.start);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end);
+    end.setHours(23, 59, 59, 999);
+    
+    const createdInPeriod = tasks.filter(t => {
+      const d = new Date(t.createdAt);
+      return d >= start && d <= end;
     });
+
+    const completedInPeriod = tasks.filter(t => {
+      if (t.status !== 'completed') return false;
+      const d = new Date(t.completedAt || t.createdAt);
+      return d >= start && d <= end;
+    });
+
+    const overdueInPeriod = tasks.filter(t => {
+      if (t.status !== 'overdue') return false;
+      const d = new Date(t.dueDate);
+      return d >= start && d <= end;
+    });
+
+    return {
+      completedTasksFiltered: completedInPeriod,
+      overdueTasksFiltered: overdueInPeriod,
+      inProgressTasksCount: createdInPeriod.filter(t => t.status === 'in_progress').length,
+      totalTasks: createdInPeriod.length
+    }
   }, [tasks, dateRange]);
-
-  const completedTasksFiltered = useMemo(() => {
-    return filteredTasks.filter(t => t.status === 'completed');
-  }, [filteredTasks]);
-
-  const overdueTasksFiltered = useMemo(() => {
-    return filteredTasks.filter(t => t.status === 'overdue');
-  }, [filteredTasks]);
 
   const completedTasks = completedTasksFiltered.length;
   const overdueTasks = overdueTasksFiltered.length;
@@ -92,18 +127,10 @@ function DashboardContent() {
 
   const topPerformerTasks = useMemo(() => {
     if (!topPerformer) return 0;
-    return tasks.filter(t => 
-      t.assignedUserId === topPerformer.id && t.status === 'completed'
-    ).length;
-  }, [tasks, topPerformer]);
+    return completedTasksFiltered.filter(t => t.assignedUserId === topPerformer.id).length;
+  }, [completedTasksFiltered, topPerformer]);
 
-  const totalTasks = filteredTasks.length;
-  
-  const inProgressTasks = useMemo(() => {
-    return filteredTasks.filter(t => t.status === 'in_progress').length;
-  }, [filteredTasks]);
-
-  const inProgressPercent = totalTasks > 0 ? Math.round((inProgressTasks / totalTasks) * 100) : 0;
+  const inProgressPercent = totalTasks > 0 ? Math.round((inProgressTasksCount / totalTasks) * 100) : 0;
   const completedPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const scoreLabel = useMemo(() => {
@@ -120,16 +147,26 @@ function DashboardContent() {
   console.log('Calculando produtividade para:', dateRange.start.toLocaleDateString('pt-BR'), 'até', dateRange.end.toLocaleDateString('pt-BR'), '- Dias:', daysInRange);
 
   const memberGrowth = useMemo(() => {
+    const start = new Date(dateRange.start);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end);
+    end.setHours(23, 59, 59, 999);
+
     const membersAtStart = users.filter(u => {
       const createdAt = new Date(u.createdAt);
-      return createdAt < dateRange.start;
+      return createdAt < start;
     }).length;
     
-    const totalNow = users.length;
-    const growth = membersAtStart > 0 ? ((totalNow - membersAtStart) / membersAtStart) * 100 : (totalNow > 0 ? 100 : 0);
+    // Mostramos os membros que existiam até a data final do período selecionado
+    const totalEndPeriod = users.filter(u => {
+      const createdAt = new Date(u.createdAt);
+      return createdAt <= end;
+    }).length;
+
+    const growth = membersAtStart > 0 ? ((totalEndPeriod - membersAtStart) / membersAtStart) * 100 : (totalEndPeriod > 0 ? 100 : 0);
     
     return {
-      current: totalNow,
+      current: totalEndPeriod,
       atStart: membersAtStart,
       percentage: Math.round(growth),
       isPositive: growth >= 0
@@ -137,8 +174,18 @@ function DashboardContent() {
   }, [users, dateRange]);
 
   const productivityData = useMemo(() => {
-    return generateProductivityData(daysInRange);
-  }, [daysInRange]);
+    const grouped: Record<string, number> = {};
+    completedTasksFiltered.forEach(task => {
+      const taskDate = new Date(task.completedAt || task.createdAt).toISOString().slice(0, 10);
+      grouped[taskDate] = (grouped[taskDate] || 0) + 1;
+    });
+    return Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({
+        date,
+        completed: count
+      }));
+  }, [completedTasksFiltered]);
 
   const aiInsights = useMemo(() => {
     const userTaskCounts: Record<string, number> = {};

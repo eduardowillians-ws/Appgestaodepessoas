@@ -47,6 +47,7 @@ export default function MatrixPage() {
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('');
   const [newSkillDescription, setNewSkillDescription] = useState('');
+  const [newSkillPoints, setNewSkillPoints] = useState<number | ''>('');
 
   useEffect(() => {
     const unsubUsers = subscribeToUsers(setUsers);
@@ -121,10 +122,12 @@ export default function MatrixPage() {
         name: newSkillName.trim(),
         category: newSkillCategory.trim(),
         description: newSkillDescription.trim(),
+        points: newSkillPoints === '' ? 5 : Number(newSkillPoints),
       });
       setNewSkillName('');
       setNewSkillCategory('');
       setNewSkillDescription('');
+      setNewSkillPoints('');
       setShowSkillModal(false);
     }
   };
@@ -380,6 +383,16 @@ export default function MatrixPage() {
                   onChange={e => setNewSkillDescription(e.target.value)}
                   placeholder="Descrição da habilidade..."
                   className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none h-20 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Pontos por Nível (Padrão: 5)</label>
+                <input
+                  type="number"
+                  value={newSkillPoints}
+                  onChange={e => setNewSkillPoints(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Pontos"
+                  className="w-full p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none"
                 />
               </div>
             </div>

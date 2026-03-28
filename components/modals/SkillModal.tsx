@@ -15,10 +15,12 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('Geral');
   const [newSkillDescription, setNewSkillDescription] = useState('');
+  const [newSkillPoints, setNewSkillPoints] = useState(5);
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editPoints, setEditPoints] = useState(5);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -36,9 +38,11 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
         name: newSkillName.trim(),
         description: newSkillDescription.trim(),
         category: newSkillCategory.trim() || 'Geral',
+        points: newSkillPoints || 5,
       });
       setNewSkillName('');
       setNewSkillDescription('');
+      setNewSkillPoints(5);
     }
   };
 
@@ -48,6 +52,7 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
         name: editName.trim(),
         category: editCategory.trim() || 'Geral',
         description: editDescription.trim(),
+        points: editPoints || 5,
       });
       setEditingSkillId(null);
     }
@@ -60,6 +65,7 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
       setEditName(skill.name);
       setEditCategory(skill.category);
       setEditDescription(skill.description || '');
+      setEditPoints(skill.points || 5);
     }
   };
 
@@ -115,6 +121,17 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
               placeholder="Descrição (opcional)"
               className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
             />
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-slate-600">Pontos:</label>
+              <input
+                type="number"
+                min={1}
+                max={25}
+                value={newSkillPoints}
+                onChange={e => setNewSkillPoints(Number(e.target.value))}
+                className="w-20 p-2 bg-white border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
             <button
               onClick={handleAdd}
               disabled={!newSkillName.trim()}
@@ -144,6 +161,17 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
                         className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
                         placeholder="Categoria"
                       />
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500">Pontos:</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={25}
+                          value={editPoints}
+                          onChange={e => setEditPoints(Number(e.target.value))}
+                          className="w-16 p-1 bg-white border border-slate-200 rounded-lg text-sm"
+                        />
+                      </div>
                       <div className="flex gap-2">
                         <button onClick={handleSaveEdit} className="flex-1 text-green-600 hover:bg-green-50 px-3 py-1.5 rounded text-sm font-medium">Salvar</button>
                         <button onClick={() => setEditingSkillId(null)} className="flex-1 text-slate-400 hover:bg-slate-100 px-3 py-1.5 rounded text-sm font-medium">Cancelar</button>
@@ -153,7 +181,7 @@ export function SkillModal({ isOpen, onClose }: SkillModalProps) {
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-medium text-on-surface">{skill.name}</p>
-                        <p className="text-xs text-slate-400">{skill.category}</p>
+                        <p className="text-xs text-slate-400">{skill.category} • {skill.points || 5} pts</p>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => handleEdit(skill.id)} className="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 rounded">

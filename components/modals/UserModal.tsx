@@ -66,9 +66,13 @@ export function UserModal({
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const objectUrl = URL.createObjectURL(file);
-      setAvatarPreview(objectUrl);
-      setAvatar(objectUrl);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setAvatarPreview(result);
+        setAvatar(result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 

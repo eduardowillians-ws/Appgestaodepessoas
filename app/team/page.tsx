@@ -12,17 +12,7 @@ import { getAllUsers, FirebaseUser } from '@/lib/firebase-users';
 
 export default function TeamPage() {
   const router = useRouter();
-  const { roles, deleteUser, tasks } = useAppStore();
-  
-  const [firebaseUsers, setFirebaseUsers] = useState<FirebaseUser[]>([]);
-  const [loadingFirebase, setLoadingFirebase] = useState(true);
-  
-  useEffect(() => {
-    getAllUsers()
-      .then(setFirebaseUsers)
-      .catch(console.error)
-      .finally(() => setLoadingFirebase(false));
-  }, []);
+  const { users, roles, deleteUser, tasks } = useAppStore();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -32,9 +22,6 @@ export default function TeamPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [detailsUserId, setDetailsUserId] = useState<string | null>(null);
-
-  const users = firebaseUsers;
-  
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
       const matchesSearch = searchQuery === '' || 
@@ -121,10 +108,6 @@ export default function TeamPage() {
     
     try {
       await deleteUser(userId);
-      
-      // Update local state to remove from UI immediately
-      setFirebaseUsers(prev => prev.filter(u => u.id !== userId));
-      
       console.log("✅ Usuário excluído com sucesso!");
     } catch (error) {
       console.error("❌ Erro ao excluir membro:", error);
@@ -446,11 +429,6 @@ export default function TeamPage() {
           isOpen={isModalOpen} 
           onClose={() => setIsModalOpen(false)} 
           userId={editingUserId}
-          onSaved={() => {
-            getAllUsers()
-              .then(setFirebaseUsers)
-              .catch(console.error);
-          }} 
         />
       )}
 

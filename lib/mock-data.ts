@@ -89,12 +89,12 @@ export const initialUsers: User[] = [
 ];
 
 export const initialSkills: Skill[] = [
-  { id: 's1', name: 'React', description: 'Desenvolvimento frontend com React', category: 'Frontend' },
-  { id: 's2', name: 'Node.js', description: 'Desenvolvimento backend com Node.js', category: 'Backend' },
-  { id: 's3', name: 'UI Design', description: 'Design de interfaces de usuário', category: 'Design' },
-  { id: 's4', name: 'Project Mgmt', description: 'Gestão de projetos e metodologias ágeis', category: 'Gestão' },
-  { id: 's5', name: 'Python', description: 'Desenvolvimento em Python', category: 'Backend' },
-  { id: 's6', name: 'DevOps', description: 'Infraestrutura e CI/CD', category: 'DevOps' },
+  { id: 's1', name: 'React', description: 'Desenvolvimento frontend com React', category: 'Frontend', points: 5 },
+  { id: 's2', name: 'Node.js', description: 'Desenvolvimento backend com Node.js', category: 'Backend', points: 5 },
+  { id: 's3', name: 'UI Design', description: 'Design de interfaces de usuário', category: 'Design', points: 5 },
+  { id: 's4', name: 'Project Mgmt', description: 'Gestão de projetos e metodologias ágeis', category: 'Gestão', points: 5 },
+  { id: 's5', name: 'Python', description: 'Desenvolvimento em Python', category: 'Backend', points: 5 },
+  { id: 's6', name: 'DevOps', description: 'Infraestrutura e CI/CD', category: 'DevOps', points: 5 },
 ];
 
 export const initialUserSkills: UserSkill[] = [

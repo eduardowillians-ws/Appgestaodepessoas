@@ -25,6 +25,7 @@ export interface FirebaseTask {
   rating: number | null;
   archived: boolean;
   archivedAt: Date | null;
+  points?: number;
 }
 
 export const tasksCollection = collection(db, 'tasks');

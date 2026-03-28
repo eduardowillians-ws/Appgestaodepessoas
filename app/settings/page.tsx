@@ -19,8 +19,9 @@ export default function SettingsPage() {
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCategory, setNewSkillCategory] = useState('');
   const [newSkillDescription, setNewSkillDescription] = useState('');
+  const [newSkillPoints, setNewSkillPoints] = useState<number | ''>('');
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
-  const [editingSkill, setEditingSkill] = useState({ name: '', category: '', description: '' });
+  const [editingSkill, setEditingSkill] = useState({ name: '', category: '', description: '', points: 5 });
 
   useEffect(() => {
     const unsubscribe = subscribeSkills((firebaseSkills) => {
@@ -61,16 +62,18 @@ export default function SettingsPage() {
         name: newSkillName.trim(),
         category: newSkillCategory.trim(),
         description: newSkillDescription.trim(),
+        points: newSkillPoints === '' ? 5 : Number(newSkillPoints),
       });
       setNewSkillName('');
       setNewSkillCategory('');
       setNewSkillDescription('');
+      setNewSkillPoints('');
     }
   };
 
-  const handleEditSkill = (id: string, skill: { name: string; category: string; description: string }) => {
+  const handleEditSkill = (id: string, skill: { name: string; category: string; description: string; points?: number }) => {
     setEditingSkillId(id);
-    setEditingSkill(skill);
+    setEditingSkill({ name: skill.name, category: skill.category, description: skill.description || '', points: skill.points ?? 5 });
   };
 
   const handleSaveSkill = async () => {
@@ -79,9 +82,10 @@ export default function SettingsPage() {
         name: editingSkill.name.trim(),
         category: editingSkill.category.trim(),
         description: editingSkill.description.trim(),
+        points: Number(editingSkill.points),
       });
       setEditingSkillId(null);
-      setEditingSkill({ name: '', category: '', description: '' });
+      setEditingSkill({ name: '', category: '', description: '', points: 5 });
     }
   };
 
@@ -228,7 +232,7 @@ export default function SettingsPage() {
             <div className="bg-surface-lowest p-6 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-lg font-bold text-on-surface mb-4">Adicionar Nova Habilidade</h3>
               <div className="flex flex-col md:flex-row md:items-start md:justify-end gap-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
                   <input
                     value={newSkillName}
                     onChange={e => setNewSkillName(e.target.value)}
@@ -246,6 +250,13 @@ export default function SettingsPage() {
                     onChange={e => setNewSkillDescription(e.target.value)}
                     placeholder="Descrição (opcional)"
                     className="p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none"
+                  />
+                  <input
+                    type="number"
+                    value={newSkillPoints}
+                    onChange={e => setNewSkillPoints(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="PTS (Padrão: 5)"
+                    className="p-3 bg-surface-low border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none w-full"
                   />
                 </div>
                 <button
@@ -265,6 +276,7 @@ export default function SettingsPage() {
                     <th className="text-left p-4 text-xs font-bold uppercase tracking-widest text-slate-400">Nome</th>
                     <th className="text-left p-4 text-xs font-bold uppercase tracking-widest text-slate-400">Categoria</th>
                     <th className="text-left p-4 text-xs font-bold uppercase tracking-widest text-slate-400">Descrição</th>
+                    <th className="text-left p-4 text-xs font-bold uppercase tracking-widest text-slate-400">PTS</th>
                     <th className="text-right p-4 text-xs font-bold uppercase tracking-widest text-slate-400">Ações</th>
                   </tr>
                 </thead>
@@ -304,6 +316,18 @@ export default function SettingsPage() {
                           />
                         ) : (
                           skill.description || '-'
+                        )}
+                      </td>
+                      <td className="p-4 text-sm font-bold text-primary">
+                        {editingSkillId === skill.id ? (
+                          <input
+                            type="number"
+                            value={editingSkill.points}
+                            onChange={e => setEditingSkill({ ...editingSkill, points: Number(e.target.value) })}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                          />
+                        ) : (
+                          skill.points ?? 5
                         )}
                       </td>
                       <td className="p-4">

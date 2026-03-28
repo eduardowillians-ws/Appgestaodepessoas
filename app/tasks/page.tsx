@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '@/lib/store';
 import { Topbar } from '@/components/Topbar';
-import { Sparkles, Plus, Filter, Calendar, Tag, MoreVertical, AlertTriangle, CheckCircle2, Circle, RefreshCw, Search, X, ChevronDown, CheckSquare, BookOpen } from 'lucide-react';
+import { Sparkles, Plus, Filter, Calendar, Tag, MoreVertical, AlertTriangle, CheckCircle2, Circle, RefreshCw, Search, X, ChevronDown, CheckSquare, BookOpen, Star } from 'lucide-react';
 import { TaskModal } from '@/components/modals/TaskModal';
 import { TrainingModal } from '@/components/modals/TrainingModal';
 import { TaskStatus, TaskPriority } from '@/lib/types';
@@ -385,7 +385,7 @@ export default function TasksPage() {
               const taskSkills = skills.filter(s => task.requiredSkills.includes(s.id));
               
               return (
-                <div key={task.id} className={`group bg-surface-lowest p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-100 ${task.status === 'overdue' ? 'border-l-4 border-l-red-500' : ''} ${task.status === 'completed' ? 'opacity-80' : ''}`}>
+                <div key={task.id} className={`group bg-surface-lowest p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-slate-100 ${task.status === 'overdue' ? 'border-l-4 border-l-red-500' : ''}`}>
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-start gap-4 flex-1">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${getStatusColor(task.status)}`}>
@@ -405,6 +405,9 @@ export default function TasksPage() {
                           <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(task.dueDate)}</span>
                           {taskSkills.length > 0 && (
                             <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> {taskSkills.map(s => s.name).join(', ')}</span>
+                          )}
+                          {(task.points ?? 1) > 1 && (
+                            <span className="flex items-center gap-1"><Star className="w-3 h-3" /> {task.points} pts</span>
                           )}
                         </div>
                       </div>
@@ -426,15 +429,17 @@ export default function TasksPage() {
                         >
                           <MoreVertical className="w-5 h-5" />
                         </button>
-                        {openMenuId === task.id && (
-                          <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-100 w-40 z-30">
+                          {openMenuId === task.id && (
+                            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-100 w-40 z-30">
                             {task.archived ? (
-                              <button 
-                                onClick={() => { unarchiveTask(task.id); setOpenMenuId(null); }} 
-                                className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                <span>📂</span> Desarquivar
-                              </button>
+                              <>
+                                <button 
+                                  onClick={() => { unarchiveTask(task.id); setOpenMenuId(null); }} 
+                                  className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <span>📂</span> Desarquivar
+                                </button>
+                              </>
                             ) : (
                               <>
                                 {task.status === 'completed' && (

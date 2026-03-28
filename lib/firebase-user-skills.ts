@@ -9,7 +9,8 @@ import {
   deleteDoc,
   onSnapshot,
   setDoc,
-  serverTimestamp 
+  serverTimestamp,
+  increment
 } from 'firebase/firestore';
 
 export interface FirebaseUserSkill {
@@ -29,12 +30,51 @@ export async function updateFirebaseUserSkill(
 ): Promise<void> {
   const docId = `${userId}_${skillId}`;
   const docRef = doc(db, 'userSkills', docId);
-  await setDoc(docRef, {
+  
+  // 1. Read existing document to check previous level
+  const existingSnap = await getDoc(docRef);
+  const previousLevel = existingSnap.exists() ? existingSnap.data().level : null;
+  
+  console.log("🔍 updateFirebaseUserSkill:", { userId, skillId, previousLevel, newLevel: level });
+  
+  // 1.5. Protect expert as terminal state - block any downgrade attempt
+  if (previousLevel === 'expert' && level !== 'expert') {
+    console.warn("🚫 BLOCKED: Attempt to downgrade expert level is not allowed");
+    return;
+  }
+  
+  // 2. Build update object
+  const updateData: any = {
     userId,
     skillId,
     level,
     lastUpdated: serverTimestamp()
-  }, { merge: true });
+  };
+  
+  // 3. If new level is "expert" AND previous was NOT "expert", award 5 points
+  if (level === 'expert' && previousLevel !== 'expert') {
+    console.log("🎉 NOVO EXPERT! Adicionando 5 pontos para userId:", userId);
+    
+    // Get user document reference
+    const userDocRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userDocRef);
+    
+    if (userSnap.exists()) {
+      // Use atomic increment to avoid race conditions
+      await updateDoc(userDocRef, {
+        points: increment(5),
+        performanceScore: increment(5)
+      });
+      console.log("✅ 5 pontos adicionados via atomic increment");
+    } else {
+      console.warn("⚠️ Usuário não encontrado no Firebase:", userId);
+    }
+  } else if (level === 'expert' && previousLevel === 'expert') {
+    console.log("⚠️ Usuário JÁ ERA expert - não dar pontos duplicados");
+  }
+  
+  // 4. Save the userSkill update
+  await setDoc(docRef, updateData, { merge: true });
 }
 
 export async function getAllUserSkills(): Promise<FirebaseUserSkill[]> {
@@ -71,25 +111,9 @@ export async function findAndUpdateUserSkill(
   skillId: string, 
   level: 'not_trained' | 'in_training' | 'competent' | 'expert'
 ): Promise<string | null> {
-  const snapshot = await getDocs(userSkillsCollection);
-  const existingDoc = snapshot.docs.find(d => d.data().userId === userId && d.data().skillId === skillId);
-  
-  if (existingDoc) {
-    await updateDoc(doc(db, 'userSkills', existingDoc.id), {
-      level,
-      lastUpdated: new Date()
-    });
-    return existingDoc.id;
-  } else if (level !== 'not_trained') {
-    const newDoc = await addDoc(userSkillsCollection, {
-      userId,
-      skillId,
-      level,
-      lastUpdated: new Date()
-    });
-    return newDoc.id;
-  }
-  return null;
+  // Delegate to updateFirebaseUserSkill which handles gamification logic
+  await updateFirebaseUserSkill(userId, skillId, level);
+  return `${userId}_${skillId}`;
 }
 
 export async function deleteUserSkillByUserAndSkill(userId: string, skillId: string): Promise<void> {

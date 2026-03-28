@@ -6,7 +6,7 @@ import { Sparkles, Filter, Plus, CheckCircle2, Award, TrendingUp, XCircle, X, Br
 import { SkillLevel, UserSkill, User, Skill } from '@/lib/types';
 import { subscribeToUsers, FirebaseUser } from '@/lib/firebase-users';
 import { subscribeSkills, FirebaseSkill, createSkill } from '@/lib/firebase-skills';
-import { subscribeUserSkills, FirebaseUserSkill, updateUserSkill, createUserSkill } from '@/lib/firebase-user-skills';
+import { subscribeUserSkills, FirebaseUserSkill, updateFirebaseUserSkill } from '@/lib/firebase-user-skills';
 
 const LEVEL_WEIGHTS: Record<SkillLevel, number> = { not_trained: 0, in_training: 1, competent: 2, expert: 3 };
 
@@ -98,26 +98,21 @@ export default function MatrixPage() {
     return { icon: Icon, color: config.color, label: config.label };
   };
 
-  const cycleLevel = (currentLevel: SkillLevel): SkillLevel => {
-    switch (currentLevel) {
-      case 'not_trained': return 'in_training';
-      case 'in_training': return 'competent';
-      case 'competent': return 'expert';
-      case 'expert': return 'not_trained';
+  const levels: SkillLevel[] = ['not_trained', 'in_training', 'competent', 'expert'];
+  
+  const cycleLevel = (level: SkillLevel): SkillLevel => {
+    if (level === 'expert') {
+      return 'expert';
     }
+    const index = levels.indexOf(level);
+    return levels[index + 1];
   };
 
   const handleCellClick = async (userId: string, skillId: string) => {
     const currentLevel = levelMap[userId]?.[skillId] || 'not_trained';
     const newLevel = cycleLevel(currentLevel);
     
-    const existing = userSkills.find(us => us.userId === userId && us.skillId === skillId);
-    if (existing) {
-      await updateUserSkill(existing.id, { level: newLevel, lastUpdated: new Date() });
-    } else if (newLevel !== 'not_trained') {
-      const { createUserSkill } = await import('@/lib/firebase-user-skills');
-      await createUserSkill({ userId, skillId, level: newLevel, lastUpdated: new Date() });
-    }
+    await updateFirebaseUserSkill(userId, skillId, newLevel);
   };
 
   const handleAddSkill = async () => {
@@ -272,8 +267,12 @@ export default function MatrixPage() {
                         return (
                           <td key={skill.id} className="p-2">
                             <div 
-                              onClick={() => handleCellClick(user.id, skill.id)}
-                              className={`h-12 w-full rounded-lg flex items-center justify-center flex-col gap-0.5 cursor-pointer hover:brightness-110 transition-all ${info.color}`}
+                              onClick={() => {
+                                if (level !== 'expert') {
+                                  handleCellClick(user.id, skill.id);
+                                }
+                              }}
+                              className={`h-12 w-full rounded-lg flex items-center justify-center flex-col gap-0.5 cursor-pointer hover:brightness-110 transition-all ${info.color} ${level === 'expert' ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                               <Icon className="w-3.5 h-3.5" />
                               <span className="text-[8px] font-bold">{info.label}</span>

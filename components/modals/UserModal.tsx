@@ -6,7 +6,7 @@ import { X, Camera } from 'lucide-react';
 import { UserStatus, Skill, SkillLevel } from '@/lib/types';
 import { createUser, updateUser as updateUserFirebase } from '@/lib/firebase-users';
 import { subscribeSkills } from '@/lib/firebase-skills';
-import { subscribeUserSkills, createUserSkill, updateUserSkill } from '@/lib/firebase-user-skills';
+import { subscribeUserSkills, updateFirebaseUserSkill } from '@/lib/firebase-user-skills';
 
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAcBL1lspFHQzM77O11-hM7xD06S5g10MR8VdDBNTucT7XRZdIyJ0vaXxx0EH1nwxMFyIANUJ0RIvPQkgG_PhIPVSfRpy9gef7W9iIDeA6l6LbVct8oSH0225HHHq1gkyHrVeO8w76eDQ_01OAP8IuL3xg1EljQXFc9U7lCh5THsisPCwRlx8djqAnukfERFnybe1Ppsbhd8cGguHv1Pdmox-4HIafBeQZSWArlrtixoV3s8i3un6fWLeMfJLqlMpykBZPYWuuzQ8yP';
@@ -126,18 +126,10 @@ export function UserModal({
       }
 
       if (savedUserId) {
-        const { getAllUserSkills } = await import('@/lib/firebase-user-skills');
-        const existingUserSkills = await getAllUserSkills();
-        
         for (const skill of skills) {
           const level = userSkillLevels[skill.id];
           if (level) {
-            const existing = existingUserSkills.find(us => us.userId === savedUserId && us.skillId === skill.id);
-            if (existing) {
-              await updateUserSkill(existing.id, { level, lastUpdated: new Date() });
-            } else {
-              await createUserSkill({ userId: savedUserId, skillId: skill.id, level, lastUpdated: new Date() });
-            }
+            await updateFirebaseUserSkill(savedUserId, skill.id, level);
           }
         }
       }

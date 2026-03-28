@@ -69,8 +69,41 @@ export function UserModal({
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
-        setAvatarPreview(result);
-        setAvatar(result);
+        
+        // Compress image to avoid 1MB Firestore limit
+        const img = new Image();
+        img.src = result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          const MAX_SIZE = 400; // Small size for avatars
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            setAvatarPreview(compressed);
+            setAvatar(compressed);
+          } else {
+            setAvatarPreview(result);
+            setAvatar(result);
+          }
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -103,30 +136,33 @@ export function UserModal({
     e.preventDefault();
     console.log("SUBMIT DISPARADO");
     try {
-      const userData = {
+      const baseData = {
         name: name.trim(),
         role: role.trim(),
         status,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         notes: notes.trim(),
         avatar,
-        performanceScore: 0,
-        points: 0,
-        level: 1,
-        xpToNextLevel: 100,
-        createdAt: new Date(),
       };
 
-      console.log("DADOS:", userData);
+      console.log("DADOS BASE:", baseData);
       
       let savedUserId = userId;
       
       if (userId) {
         console.log("ATUALIZANDO USER");
-        await updateUserFirebase(userId, userData);
+        await updateUserFirebase(userId, baseData);
       } else {
         console.log("CRIANDO USER");
-        savedUserId = await createUser(userData);
+        const newUserData = {
+          ...baseData,
+          performanceScore: 0,
+          points: 0,
+          level: 1,
+          xpToNextLevel: 100,
+          createdAt: new Date(),
+        };
+        savedUserId = await createUser(newUserData);
       }
 
       if (savedUserId) {
@@ -142,7 +178,8 @@ export function UserModal({
       onClose();
       if (onSaved) onSaved();
     } catch (error) {
-      console.error("ERRO FIREBASE:", error);
+      console.error("ERRO FIREBASE NO SUBMIT:", error);
+      alert("Houve um erro ao salvar os dados. A foto pode ser grande demais ou houve falha de conexão.");
     }
   };
 

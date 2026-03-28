@@ -4,10 +4,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Skill, UserSkill, Task, TaskStatus, SkillLevel, Role, Training, Goal } from './types';
 import { initialUsers, initialSkills, initialUserSkills, initialTasks, initialRoles, initialTrainings } from './mock-data';
 import { sanitizeData } from './utils';
-import { subscribeToUsers, FirebaseUser } from './firebase-users';
+import { subscribeToUsers, FirebaseUser, updateUser as updateUserFirebase, getUserById, addPointsToUser, deleteUser as deleteUserFirebase } from './firebase-users';
 import { subscribeSkills, FirebaseSkill } from './firebase-skills';
 import { subscribeToTasks, FirebaseTask, updateTask as updateTaskFirebase, deleteTask as deleteTaskFirebase } from './firebase-tasks';
-import { subscribeUserSkills, FirebaseUserSkill } from './firebase-user-skills';
+import { subscribeUserSkills, FirebaseUserSkill, updateFirebaseUserSkill, deleteUserSkillByUserAndSkill } from './firebase-user-skills';
 
 // ---------------------------------------------------------------------------
 // 🔒 Helpers de localStorage SEGUROS
@@ -312,29 +312,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUsers(prev => [...prev, newUser]);
   };
 
-  const addUserPoints = (userId: string, pointsToAdd: number) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id !== userId) return u;
-      const newPoints = u.points + pointsToAdd;
-      const xpNeeded = 100 * u.level;
-      const newXp = u.xpToNextLevel - pointsToAdd;
-      if (newXp <= 0) {
-        return sanitizeData({
-          ...u,
-          points: newPoints,
-          level: u.level + 1,
-          xpToNextLevel: 100 * (u.level + 1) - Math.abs(newXp),
-        });
-      }
-      return sanitizeData({ ...u, points: newPoints, xpToNextLevel: newXp });
-    }));
+  const addUserPoints = async (userId: string, pointsToAdd: number) => {
+    console.log('🔍 addUserPoints chamado:', { userId, pointsToAdd });
+    
+    // Apenas Firebase - useEffect com subscribeToUsers vai atualizar UI automaticamente
+    try {
+      await addPointsToUser(userId, pointsToAdd);
+    } catch (err) {
+      console.error('❌ Erro ao incrementar pontos:', err);
+    }
   };
 
   const updateUser = (id: string, data: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? sanitizeData({ ...u, ...data }) : u));
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
+    // Delete from Firebase first
+    try {
+      await deleteUserFirebase(id);
+      console.log("✅ Usuário removido do Firebase:", id);
+    } catch (error) {
+      console.error("❌ Erro ao excluir usuário do Firebase:", error);
+    }
+    
+    // Then update local state
     setUsers(prev => prev.filter(u => u.id !== id));
     setUserSkills(prev => prev.filter(us => us.userId !== id));
     setTasks(prev => prev.map(t => t.assignedUserId === id ? sanitizeData({ ...t, assignedUserId: undefined }) : t));
@@ -356,21 +358,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   // --- UserSkills ---
-  const updateUserSkill = (userId: string, skillId: string, level: SkillLevel) => {
-    setUserSkills(prev => {
-      const existing = prev.find(us => us.userId === userId && us.skillId === skillId);
-      const wasNotExpert = existing && existing.level !== 'expert';
-      const isNowExpert = level === 'expert';
-      
-      if (isNowExpert && wasNotExpert) {
-        addUserPoints(userId, 5.0);
-      }
-      
-      if (existing) {
+  const updateUserSkill = async (userId: string, skillId: string, level: SkillLevel) => {
+    console.log("🔗 updateUserSkill chamado:", { userId, skillId, level });
+
+    // 0. Verificar se é usuário mock (apenas IDs simples como "u1", "u2")
+    const isMockUser = /^u\d+$/.test(userId);
+    if (isMockUser) {
+      console.warn("⚠️ Tentativa de atualizar usuário mock ignorada. Use um usuário real do Firebase.");
+    }
+
+    // 1. Persistir no Firebase (se não for mock)
+    console.log("🔥 1. Iniciando Firebase para userId:", userId);
+    try {
+      if (!isMockUser) {
         if (level === 'not_trained') {
-          return prev.filter(us => us.id !== existing.id);
+          await deleteUserSkillByUserAndSkill(userId, skillId);
+        } else {
+          await updateFirebaseUserSkill(userId, skillId, level);
         }
-        return prev.map(us => us.id === existing.id
+        console.log("✅ Firebase atualizado com sucesso.");
+      }
+    } catch (error) {
+      console.error("❌ Erro ao salvar userSkill no Firebase:", error);
+    }
+
+    // 2. Lógica de Gamificação (FORA do setState)
+    console.log("🏆 2. Verificando lógica de gamificação...");
+    const existing = userSkills.find(us => us.userId === userId && us.skillId === skillId);
+    const wasNotExpert = !existing || existing.level !== 'expert';
+
+    if (level === 'expert' && wasNotExpert) {
+      console.log("🎉 NOVO EXPERT! Adicionando 5 pontos ao usuário:", userId);
+      if (!isMockUser) {
+        await addUserPoints(userId, 5.0);
+      }
+    } else if (level === 'expert' && !wasNotExpert) {
+      console.log("⚠️ Usuário JÁ ERA expert - não dar pontos duplicados");
+    }
+
+    // 3. Atualização da UI Local
+    console.log("🎨 3. Atualizando estado local...");
+    setUserSkills(prev => {
+      const existingInUpdate = prev.find(us => us.userId === userId && us.skillId === skillId);
+      
+      if (existingInUpdate) {
+        if (level === 'not_trained') {
+          return prev.filter(us => us.id !== existingInUpdate.id);
+        }
+        return prev.map(us => us.id === existingInUpdate.id
           ? sanitizeData({ ...us, level, lastUpdated: new Date().toISOString() })
           : us
         );
@@ -380,6 +415,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return prev;
     });
+    
+    console.log("✅ updateUserSkill concluído.");
   };
 
   // --- Tasks ---
@@ -398,6 +435,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const updateTaskStatus = async (id: string, status: TaskStatus) => {
+    console.log("🚀 updateTaskStatus chamado:", { id, status });
     try {
       // Primeiro atualiza no Firebase
       const updateData: any = { status };
@@ -406,29 +444,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await updateTaskFirebase(id, updateData).catch(console.error);
 
-      // Depois atualiza o estado local
+      // Depois atualiza o estado local - MAS primeiro verifica XP
       setTasks(prev => {
         const task = prev.find(t => t.id === id);
         if (!task) return prev;
         
-        const wasCompleted = task.status === 'completed';
-        const isNowCompleted = status === 'completed';
+        // Verificar ANTES de qualquer mudança
+        const taskWasAlreadyCompleted = task.status === 'completed';
+        const isNowCompleting = status === 'completed';
         const isNowOverdue = status === 'overdue';
         
-        if (isNowCompleted && !wasCompleted && task.assignedUserId) {
+        console.log("🔍 VERIFICAÇÃO DE XP:", { 
+          taskId: id, 
+          assignedUserId: task.assignedUserId,
+          taskStatus: task.status,
+          statusParam: status,
+          wasCompleted: taskWasAlreadyCompleted,
+          isNowCompleting: isNowCompleting,
+          isNowOverdue
+        });
+        
+        // Verificar se é usuário real (não mock)
+        const isRealUserId = task.assignedUserId && 
+          !task.assignedUserId.match(/^u\d+$/) && 
+          !task.assignedUserId.startsWith('mock') &&
+          task.assignedUserId.length > 5;
+        
+        // CONDIÇÃO CORRIGIDA: apenas verificar se está completando AGORA e se era diferente
+        if (isNowCompleting && task.assignedUserId && isRealUserId) {
+          console.log("🔥 CONDIÇÃO ACEITA! Chamando addUserPoints agora para:", task.assignedUserId);
+          // Chamar diretamente aqui dentro do setTasks
           addUserPoints(task.assignedUserId, 1.0);
         }
         
-        if (isNowOverdue && !wasCompleted && task.assignedUserId && task.status !== 'overdue') {
-          addUserPoints(task.assignedUserId, -0.5);
-        }
-
+        // Retornar estado atualizado
         return prev.map(t => {
           if (t.id === id) {
             return sanitizeData({
               ...t,
               status,
-              completedAt: isNowCompleted ? new Date().toISOString() : t.completedAt
+              completedAt: isNowCompleting ? new Date().toISOString() : t.completedAt
             });
           }
           return t;

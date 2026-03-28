@@ -1,5 +1,5 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getFirestore, enableIndexedDbPersistence, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,5 +12,38 @@ const firebaseConfig = {
 
 console.log("🔥 Firebase config:", firebaseConfig);
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+let db: Firestore;
+
+try {
+  db = getFirestore(app);
+  enableIndexedDbPersistence(db)
+    .then(() => console.log("✅ [Firebase] Persistência offline habilitada"))
+    .catch((err: any) => {
+      if (err.code === 'failed-precondition') {
+        console.warn("⚠️ [Firebase] Múltiplas abas abertas");
+      } else if (err.code === 'unimplemented') {
+        console.warn("⚠️ [Firebase] Browser não suporta persistência offline");
+      }
+    });
+} catch (e) {
+  console.error("❌ [Firebase] Erro ao inicializar:", e);
+  db = getFirestore(app);
+}
+
+export { db };
+
+export async function testFirebaseConnection() {
+  console.log("📡 [Firebase] Testando conexão...");
+  try {
+    const { doc, getDocFromServer } = await import('firebase/firestore');
+    const testDoc = doc(db, 'users', 'test-connection');
+    await getDocFromServer(testDoc);
+    console.log("✅ [Firebase] Conexão OK!");
+    return true;
+  } catch (error: any) {
+    console.error("❌ [Firebase] Erro de conexão:", error?.message || error);
+    return false;
+  }
+}

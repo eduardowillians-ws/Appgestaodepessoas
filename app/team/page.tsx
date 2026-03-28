@@ -113,6 +113,25 @@ export default function TeamPage() {
     setIsModalOpen(true);
   };
 
+  const handleDeleteMember = async (userId: string, userName: string) => {
+    const confirmed = confirm(`Tem certeza que deseja excluir "${userName}"? Esta ação não pode ser desfeita.`);
+    if (!confirmed) return;
+    
+    console.log("🗑️ Iniciando exclusão do usuário:", userId, userName);
+    
+    try {
+      await deleteUser(userId);
+      
+      // Update local state to remove from UI immediately
+      setFirebaseUsers(prev => prev.filter(u => u.id !== userId));
+      
+      console.log("✅ Usuário excluído com sucesso!");
+    } catch (error) {
+      console.error("❌ Erro ao excluir membro:", error);
+      alert("Erro ao excluir membro. Tente novamente.");
+    }
+  };
+
   const handleAdd = () => {
     setEditingUserId(null);
     setIsModalOpen(true);
@@ -312,10 +331,10 @@ export default function TeamPage() {
               <div key={user.id} className="bg-surface-lowest p-6 rounded-xl shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 transition-all group relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-500"></div>
                 
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex gap-2">
+                <div className="absolute top-2 right-2 opacity-100 z-10 flex gap-2">
                   <button onClick={() => setDetailsUserId(user.id)} className="text-slate-400 hover:text-primary text-xs font-bold bg-white/80 px-2 py-1 rounded shadow-sm">Detalhes</button>
                   <button onClick={() => handleEdit(user.id)} className="text-slate-400 hover:text-primary text-xs font-bold bg-white/80 px-2 py-1 rounded shadow-sm">Editar</button>
-                  <button onClick={() => deleteUser(user.id)} className="text-slate-400 hover:text-error text-xs font-bold bg-white/80 px-2 py-1 rounded shadow-sm">Excluir</button>
+                  <button onClick={() => handleDeleteMember(user.id, user.name)} className="text-slate-400 hover:text-error text-xs font-bold bg-white/80 px-2 py-1 rounded shadow-sm">Excluir</button>
                 </div>
 
                 <div className="relative flex flex-col items-center text-center">

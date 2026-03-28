@@ -7,7 +7,9 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc,
-  onSnapshot 
+  onSnapshot,
+  setDoc,
+  serverTimestamp 
 } from 'firebase/firestore';
 
 export interface FirebaseUserSkill {
@@ -19,6 +21,21 @@ export interface FirebaseUserSkill {
 }
 
 export const userSkillsCollection = collection(db, 'userSkills');
+
+export async function updateFirebaseUserSkill(
+  userId: string, 
+  skillId: string, 
+  level: 'not_trained' | 'in_training' | 'competent' | 'expert'
+): Promise<void> {
+  const docId = `${userId}_${skillId}`;
+  const docRef = doc(db, 'userSkills', docId);
+  await setDoc(docRef, {
+    userId,
+    skillId,
+    level,
+    lastUpdated: serverTimestamp()
+  }, { merge: true });
+}
 
 export async function getAllUserSkills(): Promise<FirebaseUserSkill[]> {
   const snapshot = await getDocs(userSkillsCollection);
@@ -47,6 +64,40 @@ export async function createUserSkill(userSkillData: Omit<FirebaseUserSkill, 'id
 export async function updateUserSkill(id: string, userSkillData: Partial<FirebaseUserSkill>): Promise<void> {
   const docRef = doc(db, 'userSkills', id);
   await updateDoc(docRef, userSkillData);
+}
+
+export async function findAndUpdateUserSkill(
+  userId: string, 
+  skillId: string, 
+  level: 'not_trained' | 'in_training' | 'competent' | 'expert'
+): Promise<string | null> {
+  const snapshot = await getDocs(userSkillsCollection);
+  const existingDoc = snapshot.docs.find(d => d.data().userId === userId && d.data().skillId === skillId);
+  
+  if (existingDoc) {
+    await updateDoc(doc(db, 'userSkills', existingDoc.id), {
+      level,
+      lastUpdated: new Date()
+    });
+    return existingDoc.id;
+  } else if (level !== 'not_trained') {
+    const newDoc = await addDoc(userSkillsCollection, {
+      userId,
+      skillId,
+      level,
+      lastUpdated: new Date()
+    });
+    return newDoc.id;
+  }
+  return null;
+}
+
+export async function deleteUserSkillByUserAndSkill(userId: string, skillId: string): Promise<void> {
+  const snapshot = await getDocs(userSkillsCollection);
+  const existingDoc = snapshot.docs.find(d => d.data().userId === userId && d.data().skillId === skillId);
+  if (existingDoc) {
+    await deleteDoc(doc(db, 'userSkills', existingDoc.id));
+  }
 }
 
 export async function deleteUserSkill(id: string): Promise<void> {

@@ -52,6 +52,15 @@ export default function ReportsPage() {
   const [selectedCollaborator, setSelectedCollaborator] = useState<string>('');
   const [includeArchived, setIncludeArchived] = useState(false);
 
+  // Função segura para converter qualquer valor de data para Date
+  const safeToDate = (dateValue: any): Date => {
+    if (!dateValue) return new Date();
+    if (dateValue instanceof Date) return dateValue;
+    if (typeof dateValue === 'string') return new Date(dateValue);
+    if (dateValue.toDate) return dateValue.toDate(); // Firebase Timestamp
+    return new Date();
+  };
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -109,7 +118,7 @@ export default function ReportsPage() {
     if (total === 0) return 0;
     const now = new Date();
     const overdue = allTasks.filter(t => {
-      const dueDate = new Date(t.dueDate);
+      const dueDate = safeToDate(t.dueDate);
       return dueDate < now && t.status !== 'completed';
     }).length;
     return Math.round((overdue / total) * 100);
